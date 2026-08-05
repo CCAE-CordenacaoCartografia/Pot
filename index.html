@@ -1,3 +1,5 @@
+
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -3895,6 +3897,47 @@
       height: 0 !important;
       margin: 0 !important;
     }
+
+    /* Acesso ao PDF do Mapa de Potencialidades 2026 — fixado no rodapé do painel esquerdo */
+    .pdf-map-actions {
+      flex: 0 0 auto;
+      margin: 0 18px 18px 18px;
+      padding: 12px;
+      border: 1px solid #dbe3ec;
+      border-radius: 14px;
+      background: rgba(255,255,255,.92);
+      position: relative;
+      z-index: 2;
+    }
+
+    .pdf-map-actions h3 {
+      margin: 0 0 10px 0;
+      font-size: 14px;
+      color: var(--text);
+    }
+
+    .pdf-map-buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .pdf-map-buttons .mini-action-btn {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      text-align: center;
+      text-decoration: none;
+      line-height: 1.25;
+    }
+
+    @media (max-width: 980px) {
+      .pdf-map-actions {
+        margin: 0 14px 14px 14px;
+      }
+    }
 </style>
 </head>
 <body>
@@ -3999,6 +4042,15 @@
               <div class="chip" data-view="mineracao">Mineração</div>
             </div>
           </div>
+        </div>
+
+      </div>
+
+      <div class="pdf-map-actions" aria-label="Mapa de Potencialidades em PDF">
+        <h3>Mapa de Potencialidades 2026</h3>
+        <div class="pdf-map-buttons">
+          <a class="mini-action-btn primary" href="./Mapa de Potencialidades do Piauí - 2026.pdf" target="_blank" rel="noopener noreferrer" aria-label="Visualizar o Mapa de Potencialidades 2026 em PDF">👁 Visualizar PDF</a>
+          <a class="mini-action-btn" href="./Mapa de Potencialidades do Piauí - 2026.pdf" download="Mapa de Potencialidades do Piauí - 2026.pdf" aria-label="Baixar o Mapa de Potencialidades 2026 em PDF">⬇ Baixar Mapa de Potencialidades 2026 em PDF</a>
         </div>
       </div>
     </aside>
