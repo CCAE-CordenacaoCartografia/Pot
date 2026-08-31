@@ -13559,7 +13559,10 @@ const ucEstadualLayer = new L.GeoJSON.AJAX(PATH_UC_EST, {
    // Camada Mineração — SIGMINE/ANM via API automática
 // Fonte oficial: https://geo.anm.gov.br/arcgis/rest/services/SIGMINE/dados_anm/MapServer/0/query
 // Mantém a mesma forma de exibição do Atlas; altera somente a origem dos dados.
-const SIGMINE_ANM_API_URL = 'https://geo.anm.gov.br/arcgis/rest/services/SIGMINE/dados_anm/MapServer/0/query';
+const SIGMINE_ANM_API_URLS = [
+  'https://geo.anm.gov.br/arcgis/rest/services/SIGMINE/dados_anm/FeatureServer/0/query',
+  'https://geo.anm.gov.br/arcgis/rest/services/SIGMINE/dados_anm/MapServer/0/query'
+];
 
 let sigmineANMCarregado = false;
 let sigmineANMCarregando = false;
@@ -13611,11 +13614,65 @@ function idMineracaoANMFeature(feature) {
   );
 }
 
+function esriJSONParaGeoJSON(data) {
+  if (!data || !Array.isArray(data.features)) return [];
+
+  return data.features.map((item) => {
+    const geometry = item?.geometry || null;
+    let geojsonGeometry = null;
+
+    if (geometry?.rings) {
+      const rings = geometry.rings.map(ring => ring.map(([x, y]) => [x, y]));
+      geojsonGeometry = { type: 'Polygon', coordinates: rings };
+    } else if (geometry?.paths) {
+      geojsonGeometry = { type: 'MultiLineString', coordinates: geometry.paths };
+    } else if (Number.isFinite(geometry?.x) && Number.isFinite(geometry?.y)) {
+      geojsonGeometry = { type: 'Point', coordinates: [geometry.x, geometry.y] };
+    }
+
+    return {
+      type: 'Feature',
+      properties: item.attributes || {},
+      geometry: geojsonGeometry
+    };
+  }).filter(f => f.geometry);
+}
+
+function consultarMineracaoANMJsonp(url, paramsBase) {
+  return new Promise((resolve, reject) => {
+    const callbackName = `__sigmine_cb_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const script = document.createElement('script');
+    const timeout = setTimeout(() => finalizar(new Error('Tempo esgotado ao consultar a ANM.')), 20000);
+
+    function finalizar(erro, dados) {
+      clearTimeout(timeout);
+      try { delete window[callbackName]; } catch (_) { window[callbackName] = undefined; }
+      try { script.remove(); } catch (_) {}
+      if (erro) reject(erro); else resolve(dados);
+    }
+
+    window[callbackName] = (data) => {
+      if (data?.error) {
+        finalizar(new Error(data.error.message || 'Erro retornado pelo SIGMINE/ANM.'));
+        return;
+      }
+      finalizar(null, esriJSONParaGeoJSON(data));
+    };
+
+    const params = new URLSearchParams(paramsBase);
+    params.set('f', 'json');
+    params.set('callback', callbackName);
+    script.src = `${url}?${params.toString()}`;
+    script.async = true;
+    script.onerror = () => finalizar(new Error('Falha de rede/CORS ao acessar o SIGMINE/ANM.'));
+    document.head.appendChild(script);
+  });
+}
+
 async function consultarMineracaoANMTile(tile) {
   const [west, south, east, north] = tile;
 
-  const params = new URLSearchParams({
-    f: 'geojson',
+  const paramsBase = {
     where: "UF = 'PI'",
     outFields: '*',
     returnGeometry: 'true',
@@ -13624,13 +13681,42 @@ async function consultarMineracaoANMTile(tile) {
     geometryType: 'esriGeometryEnvelope',
     spatialRel: 'esriSpatialRelIntersects',
     geometry: [west, south, east, north].join(',')
-  });
+  };
 
-  const resp = await fetch(`${SIGMINE_ANM_API_URL}?${params.toString()}`);
-  if (!resp.ok) throw new Error(`Erro na API SIGMINE/ANM: HTTP ${resp.status}`);
+  let ultimoErro = null;
 
-  const data = await resp.json();
-  return Array.isArray(data.features) ? data.features : [];
+  // 1) Tenta REST/GeoJSON normalmente (FeatureServer primeiro; MapServer como fallback).
+  for (const url of SIGMINE_ANM_API_URLS) {
+    try {
+      const params = new URLSearchParams({ ...paramsBase, f: 'geojson' });
+      const resp = await fetch(`${url}?${params.toString()}`, {
+        method: 'GET',
+        mode: 'cors',
+        cache: 'no-store'
+      });
+
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      if (data?.error) throw new Error(data.error.message || 'Erro retornado pela ANM');
+      if (Array.isArray(data.features)) return data.features;
+    } catch (erro) {
+      ultimoErro = erro;
+      console.warn('Falha no acesso REST direto ao SIGMINE/ANM; tentando alternativa:', url, erro);
+    }
+  }
+
+  // 2) Alguns navegadores/GitHub Pages podem ser bloqueados por CORS no fetch.
+  // Nessa situação, usa JSONP do ArcGIS REST para obter os mesmos dados sem CORS.
+  for (const url of SIGMINE_ANM_API_URLS) {
+    try {
+      return await consultarMineracaoANMJsonp(url, paramsBase);
+    } catch (erro) {
+      ultimoErro = erro;
+      console.warn('Falha também no fallback JSONP do SIGMINE/ANM:', url, erro);
+    }
+  }
+
+  throw ultimoErro || new Error('Não foi possível consultar o SIGMINE/ANM.');
 }
 
 function limparMineracaoANMAtlas() {
